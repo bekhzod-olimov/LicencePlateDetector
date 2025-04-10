@@ -1,7 +1,7 @@
 import os
 import cv2
 import torch
-# torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
+torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
 # or simply:
 # torch.classes.__path__ = []
 import sys
@@ -30,8 +30,7 @@ class GroundingDINOApp:
         self.device   = device
         self.model = self.load_model(config_path, checkpoint_path)
 
-    def load_model(self, config_path, checkpoint_path):
-        print(f"checkpoint_path -> {checkpoint_path}")
+    def load_model(self, config_path, checkpoint_path):        
         args = SLConfig.fromfile(config_path)
         args.device = self.device
         model = build_model(args)
