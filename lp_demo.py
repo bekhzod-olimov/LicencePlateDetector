@@ -2,7 +2,8 @@ import os
 import cv2
 import torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
-
+import sys
+sys.path.append("./")
 # or simply:
 # torch.classes.__path__ = []
 import numpy as np
@@ -28,6 +29,7 @@ class GroundingDINOApp:
         self.model = self.load_model(config_path, checkpoint_path)
 
     def load_model(self, config_path, checkpoint_path):
+        print(f"checkpoint_path -> {checkpoint_path}")
         args = SLConfig.fromfile(config_path)
         args.device = self.device
         model = build_model(args)
@@ -114,7 +116,7 @@ if lang == "Korean":
     with st.sidebar:
         st.header("설정")
         config_path = st.text_input("설정 파일 경로", "groundingdino/config/GroundingDINO_SwinT_OGC.py")
-        checkpoint_path = st.text_input("체크포인트 파일 경로", "/home/bekhzod/Desktop/localization_models_performance/weights/groundingdino_swint_ogc.pth")
+        checkpoint_path = st.text_input("체크포인트 파일 경로", "groundingdino_swint_ogc.pth")
         cpu_only = st.checkbox("CPU만 사용", value=False)
         box_thresh = st.slider("박스 임계값", 0.0, 1.0, 0.3, 0.05)
         text_thresh = st.slider("텍스트 임계값", 0.0, 1.0, 0.3, 0.05)
@@ -124,7 +126,7 @@ if lang == "Korean":
     if text_prompt == "번호판": text_prompt = "license plate"
 
     uploaded_image = st.file_uploader("또는 이미지 업로드", type=["png", "jpg", "jpeg"])
-    image_dir = st.text_input("이미지 폴더 경로 (선택 사항)", "bekhzod-olimov/licenceplatedetector/main/lp_images/")
+    image_dir = st.text_input("이미지 폴더 경로 (선택 사항)", "lp_images/")
 
 else:  # English interface
     st.title("🔍 Grounding DINO Demo")
@@ -134,7 +136,7 @@ else:  # English interface
     with st.sidebar:
         st.header("Settings")
         config_path = st.text_input("Configuration File Path", "groundingdino/config/GroundingDINO_SwinT_OGC.py")
-        checkpoint_path = st.text_input("Checkpoint File Path", "weights/groundingdino_swint_ogc.pth")
+        checkpoint_path = st.text_input("Checkpoint File Path", "groundingdino_swint_ogc.pth")
         cpu_only = st.checkbox("Use CPU only", value=False)
         box_thresh = st.slider("Box Threshold", 0.0, 1.0, 0.3, 0.05)
         text_thresh = st.slider("Text Threshold", 0.0, 1.0, 0.3, 0.05)
@@ -143,16 +145,17 @@ else:  # English interface
     text_prompt = st.text_input("Text Prompt", "license plate")
 
     uploaded_image = st.file_uploader("Or upload an image", type=["png", "jpg", "jpeg"])
-    image_dir = st.text_input("Image Folder Path (Optional)", "bekhzod-olimov/licenceplatedetector/main/lp_images/")
+    image_dir = st.text_input("Image Folder Path (Optional)", "lp_images/")
 
 # Initialize model
 device = "cpu" if cpu_only else "cuda"
 
-if os.path.exists(config_path) and os.path.exists(checkpoint_path):
+if not os.path.isfile(checkpoint_path):    
+    st.error("Downloading pretrained weights..." if lang == "English" else "체크포인트를 다운로드하는 중입니다...")    
+    os.system("wget -q https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth")            
+else:    
     g_dino = GroundingDINOApp(config_path = config_path, checkpoint_path = checkpoint_path, cpu_only = cpu_only, device = device)
-else:
-    st.error("Please provide valid configuration and checkpoint file paths." if lang == "English" else "유효한 설정 파일 및 체크포인트 경로를 입력해주세요.")
-    st.stop()
+    
 
 # Image preview and selection
 detection_triggered = False
