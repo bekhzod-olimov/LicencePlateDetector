@@ -1,11 +1,12 @@
 import os
 import cv2
 import torch
-torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
-import sys
-sys.path.append("./")
+# torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
 # or simply:
 # torch.classes.__path__ = []
+import sys
+sys.path.append("./")
+
 import numpy as np
 import urllib.request
 import streamlit as st

@@ -241,7 +241,7 @@ dependencies:
   - zlib=1.2.13=hcfcfb64_5
   - zstd=1.5.5=h12be248_0
   - pip:
-      - opencv-python==4.8.0.76
+      # - opencv-python==4.8.0.76
       - supervision==0.6.0
       - torchaudio==2.0.2
       - torchvision==0.15.2
