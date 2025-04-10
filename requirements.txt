@@ -5,7 +5,8 @@ addict
 yapf
 timm
 numpy
-opencv-python
+opencv-python-headless==4.5.3.56
+# opencv-python
 supervision>=0.22.0
 pycocotools
 pytesseract
