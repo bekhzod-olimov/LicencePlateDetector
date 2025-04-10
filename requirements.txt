@@ -1,7 +1,6 @@
 opencv-python-headless
 torch
 torchvision
-wget
 transformers
 addict
 yapf

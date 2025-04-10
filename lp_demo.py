@@ -7,6 +7,7 @@ sys.path.append("./")
 # or simply:
 # torch.classes.__path__ = []
 import numpy as np
+import urllib.request
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 from glob import glob
@@ -152,7 +153,13 @@ device = "cpu" if cpu_only else "cuda"
 
 if not os.path.isfile(checkpoint_path):    
     st.error("Downloading pretrained weights..." if lang == "English" else "체크포인트를 다운로드하는 중입니다...")    
-    os.system("wget -q https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth")            
+    with st.spinner("Please wait we are downloading the SDH Model."):
+        urllib.request.urlretrieve(
+            "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth", f"{checkpoint_path}"
+        )
+    st.success("Pretrained weights have been downloaded!")
+
+    # os.system("wget -q https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth")            
 
 g_dino = GroundingDINOApp(config_path = config_path, checkpoint_path = checkpoint_path, cpu_only = cpu_only, device = device)
     
