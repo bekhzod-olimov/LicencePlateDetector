@@ -120,7 +120,7 @@ if lang == "Korean":
     if text_prompt == "번호판": text_prompt = "license plate"
 
     uploaded_image = st.file_uploader("또는 이미지 업로드", type=["png", "jpg", "jpeg"])
-    image_dir = st.text_input("이미지 폴더 경로 (선택 사항)", "/home/bekhzod/Desktop/localization_models_performance/lp_images/")
+    image_dir = st.text_input("이미지 폴더 경로 (선택 사항)", "lp_images/")
 
 else:  # English interface
     st.title("🔍 Grounding DINO Demo")
@@ -139,7 +139,7 @@ else:  # English interface
     text_prompt = st.text_input("Text Prompt", "license plate")
 
     uploaded_image = st.file_uploader("Or upload an image", type=["png", "jpg", "jpeg"])
-    image_dir = st.text_input("Image Folder Path (Optional)", "/home/bekhzod/Desktop/localization_models_performance/lp_images/")
+    image_dir = st.text_input("Image Folder Path (Optional)", "lp_images/")
 
 # Initialize model
 device = "cpu" if cpu_only else "cuda"
