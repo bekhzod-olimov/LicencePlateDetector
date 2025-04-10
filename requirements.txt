@@ -9,3 +9,4 @@ opencv-contrib-python
 supervision>=0.22.0
 pycocotools
 pytesseract
+streamlit==1.44.1
