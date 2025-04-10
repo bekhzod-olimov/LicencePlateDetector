@@ -4,7 +4,7 @@ import torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
 
 # or simply:
-torch.classes.__path__ = []
+# torch.classes.__path__ = []
 import numpy as np
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
