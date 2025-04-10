@@ -204,7 +204,7 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
         with st.spinner("탐지 중..." if lang == "Korean" else "Detecting..."):
             _, image_tensor = g_dino.preprocess_image(detection_image)
             boxes, phrases = g_dino.get_grounding_output(image_tensor, text_prompt, box_thresh, text_thresh)
-            boxes = boxes.to("cpu")
+            boxes = boxes.to(device)
 
             result_image = g_dino.plot_boxes(detection_image.copy(), boxes, phrases)
             st.image(result_image, caption="탐지된 결과" if lang == "Korean" else "Detected Results", use_container_width=True)
@@ -245,7 +245,7 @@ else:  # Video mode
                     with st.spinner(f"{frame_num // fps + 1}초 프레임 탐지 중..." if lang == "Korean" else f"Detecting frame at {frame_num // fps + 1} sec..."):
                         _, image_tensor = g_dino.preprocess_image(pil_image)
                         boxes, phrases = g_dino.get_grounding_output(image_tensor, text_prompt, box_thresh, text_thresh)
-                        boxes = boxes.to("cpu")
+                        boxes = boxes.to(device)
 
                         result_image = g_dino.plot_boxes(pil_image.copy(), boxes, phrases)
                         st.image(result_image, caption=f"{frame_num // fps + 1}초 결과" if lang == "Korean" else f"Results at {frame_num // fps + 1} sec", use_container_width=True)
