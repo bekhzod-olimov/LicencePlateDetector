@@ -25,7 +25,7 @@ from groundingdino.util.vl_utils import create_positive_map_from_span
 from groundingdino.util.slconfig import SLConfig
 
 class GroundingDINOApp:
-    def __init__(self, config_path, checkpoint_path, device, cpu_only=False):
+    def __init__(self, config_path, checkpoint_path, device, cpu_only=True):
         self.cpu_only = cpu_only        
         self.device   = device
         self.model = self.load_model(config_path, checkpoint_path)
@@ -138,7 +138,7 @@ else:  # English interface
         st.header("Settings")
         config_path = st.text_input("Configuration File Path", "groundingdino/config/GroundingDINO_SwinT_OGC.py")
         checkpoint_path = st.text_input("Checkpoint File Path", "groundingdino_swint_ogc.pth")
-        cpu_only = st.checkbox("Use CPU only", value=False)
+        cpu_only = st.checkbox("Use CPU only", value=True)
         box_thresh = st.slider("Box Threshold", 0.0, 1.0, 0.3, 0.05)
         text_thresh = st.slider("Text Threshold", 0.0, 1.0, 0.3, 0.05)
 
