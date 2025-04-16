@@ -158,16 +158,13 @@ if not os.path.isfile(checkpoint_path):
         urllib.request.urlretrieve(
             "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth", f"{checkpoint_path}"
         )
-    st.success("Pretrained weights have been downloaded!")          
+    st.success("Pretrained weights have been downloaded!")        
 
-g_dino = GroundingDINOApp(config_path = config_path, checkpoint_path = checkpoint_path, cpu_only = cpu_only, device = device)    
+g_dino = GroundingDINOApp(config_path=config_path, checkpoint_path=checkpoint_path, cpu_only=cpu_only, device=device)
 
-# Image preview and selection
 detection_triggered = False
 detection_image = None
 original_cv2 = None
-result_image = None
-cropped_img = None
 ocr_text = ""
 
 if mode == ("이미지" if lang == "Korean" else "Image"):
@@ -182,13 +179,16 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
             cols = st.columns(5)
             for col, img_path in zip(cols, row):
                 with col:
-                    pil_img = Image.open(img_path).convert("RGB")
-                    pil_img = ImageOps.fit(pil_img, (200, 200))
-                    st.image(pil_img, caption=os.path.basename(img_path), use_container_width=False)
+                    with Image.open(img_path) as pil_img:
+                        preview_img = ImageOps.fit(pil_img.convert("RGB"), (200, 200))
+                        st.image(preview_img, caption=os.path.basename(img_path), use_container_width=False)
+
                     if st.button("위 이미지 탐지하기" if lang == "Korean" else "Detect from Image", key=img_path):
                         detection_triggered = True
-                        detection_image = Image.open(img_path).convert("RGB")
-                        original_cv2 = np.array(detection_image)
+                        with Image.open(img_path) as img:
+                            detection_image = img.convert("RGB")
+                            original_cv2 = np.array(detection_image)
+
     elif image_dir.strip():
         st.warning("입력한 이미지 폴더 경로가 잘못되었거나 폴더가 비어있습니다." if lang == "Korean" else "Invalid image folder path or folder is empty.")
 
@@ -200,7 +200,6 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
     if detection_triggered and detection_image is not None:
         st.markdown("---")
         st.markdown("### 🔍 탐지 결과" if lang == "Korean" else "### 🔍 Detection Results")
-
         st.image(detection_image, caption="원본 이미지" if lang == "Korean" else "Original Image", use_container_width=True)
 
         with st.spinner("탐지 중..." if lang == "Korean" else "Detecting..."):
@@ -208,7 +207,7 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
             boxes, phrases = g_dino.get_grounding_output(image_tensor, text_prompt, box_thresh, text_thresh)
             boxes = boxes.to(device)
 
-            result_image = g_dino.plot_boxes(detection_image.copy(), boxes, phrases)
+            result_image = g_dino.plot_boxes(detection_image, boxes, phrases)
             st.image(result_image, caption="탐지된 결과" if lang == "Korean" else "Detected Results", use_container_width=True)
 
             if len(boxes) > 0:
@@ -218,10 +217,12 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
 
                 cleaned_text = re.sub(r'[^A-Za-z0-9\- ]', '', ocr_text)
                 st.success(f"OCR 인식 결과: {cleaned_text}" if lang == "Korean" else f"OCR Result: {cleaned_text}")
+                del cropped_img
             else:
                 st.warning("탐지된 객체가 없습니다." if lang == "Korean" else "No object detected.")
+            del result_image, detection_image, original_cv2
 
-else:  # Video mode
+else:
     st.markdown("### 🎞️ 비디오 탐지 모드" if lang == "Korean" else "### 🎞️ Video Detection Mode")
 
     video_paths = glob(os.path.join(image_dir, "*.mp4"))
@@ -234,13 +235,14 @@ else:  # Video mode
             fps = int(cap.get(cv2.CAP_PROP_FPS))
             st.info(f"FPS: {fps}")
             frame_num = 0
+            max_frames = 30  # limit processing for low RAM
 
-            while cap.isOpened():
+            while cap.isOpened() and frame_num < max_frames:
                 ret, frame = cap.read()
                 if not ret:
                     break
 
-                if frame_num % fps == 0:  # Every 1 second
+                if frame_num % fps == 0:  # Process every second
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     pil_image = Image.fromarray(rgb_frame)
 
@@ -249,15 +251,17 @@ else:  # Video mode
                         boxes, phrases = g_dino.get_grounding_output(image_tensor, text_prompt, box_thresh, text_thresh)
                         boxes = boxes.to(device)
 
-                        result_image = g_dino.plot_boxes(pil_image.copy(), boxes, phrases)
+                        result_image = g_dino.plot_boxes(pil_image, boxes, phrases)
                         st.image(result_image, caption=f"{frame_num // fps + 1}초 결과" if lang == "Korean" else f"Results at {frame_num // fps + 1} sec", use_container_width=True)
 
                         if len(boxes) > 0:
                             cropped_img, ocr_text = g_dino.crop_and_ocr(frame, boxes[0])
                             cleaned_text = re.sub(r'[^A-Za-z0-9\- ]', '', ocr_text)
                             st.success(f"OCR 인식 결과: {cleaned_text}" if lang == "Korean" else f"OCR Result: {cleaned_text}")
+                            del cropped_img
                         else:
                             st.info("탐지된 객체 없음" if lang == "Korean" else "No object detected")
+                        del result_image, pil_image, image_tensor
 
                 frame_num += 1
 

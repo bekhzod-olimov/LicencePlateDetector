@@ -18,46 +18,6 @@ from groundingdino.util.utils import clean_state_dict, get_phrases_from_posmap
 from groundingdino.util.vl_utils import create_positive_map_from_span
 
 
-# def plot_boxes_to_image(image_pil, tgt, lbl_path):
-#     H, W = tgt["size"]
-#     boxes = tgt["boxes"]
-#     labels = tgt["labels"]
-#     assert len(boxes) == len(labels), "boxes and labels must have same length"
-
-#     draw = ImageDraw.Draw(image_pil)
-#     mask = Image.new("L", image_pil.size, 0)
-#     mask_draw = ImageDraw.Draw(mask)
-
-#     # draw boxes and masks
-#     for box, label in zip(boxes, labels):
-#         # from 0..1 to 0..W, 0..H
-#         box = box * torch.Tensor([W, H, W, H])
-#         # from xywh to xyxy
-#         box[:2] -= box[2:] / 2
-#         box[2:] += box[:2]
-#         # random color
-#         color = tuple(np.random.randint(0, 255, size=3).tolist())
-#         # draw
-#         x0, y0, x1, y1 = box
-#         x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
-
-#         draw.rectangle([x0, y0, x1, y1], outline=color, width=6)
-#         # draw.text((x0, y0), str(label), fill=color)
-
-#         font = ImageFont.load_default()
-#         if hasattr(font, "getbbox"):
-#             bbox = draw.textbbox((x0, y0), str(label), font)
-#         else:
-#             w, h = draw.textsize(str(label), font)
-#             bbox = (x0, y0, w + x0, y0 + h)
-#         # bbox = draw.textbbox((x0, y0), str(label))
-#         draw.rectangle(bbox, fill=color)
-#         draw.text((x0, y0), str(label), fill="white")
-
-#         mask_draw.rectangle([x0, y0, x1, y1], fill=255, width=6)
-
-#     return image_pil, mask
-
 def plot_boxes_to_image(image_pil, tgt, lbl_path):
     H, W = tgt["size"]
     boxes = tgt["boxes"]
@@ -348,8 +308,8 @@ if __name__ == "__main__":
         "--output_dir", "-o", type=str, default="outputs", required=True, help="output directory"
     )
 
-    parser.add_argument("--box_threshold", type=float, default=0.1, help="box threshold")
-    parser.add_argument("--text_threshold", type=float, default=0.1, help="text threshold")
+    parser.add_argument("--box_threshold", type=float, default=0.05, help="box threshold")
+    parser.add_argument("--text_threshold", type=float, default=0.05, help="text threshold")
     parser.add_argument("--token_spans", type=str, default=None, help=
                         "The positions of start and end positions of phrases of interest. \
                         For example, a caption is 'a cat and a dog', \
@@ -374,15 +334,20 @@ if __name__ == "__main__":
     im_files = [".png", ".jpg", ".jpeg", ".bmp"]
     # make dir
     os.makedirs(output_dir, exist_ok=True)
+    lbls_dir = "/mnt/data/cervical_screening/classification/hospital_dataset/25_04_02_1024"
     
     # load model
     model = load_model(config_file, checkpoint_path, cpu_only=args.cpu_only)
 
     # if image_dir: image_paths = glob(f"{image_dir}/*/*{[im_file for im_file in im_files]}")    
-    if image_dir: image_paths = glob(f"{image_dir}/*/*.jpg")    
+    # if image_dir: image_paths = glob(f"{image_dir}/*/*.jpg")    
+    if image_dir: image_paths = glob(f"{image_dir}/*.jpg")    
     start = time()
-    for idx, image_path in tqdm(enumerate(image_paths), desc = "Detecting objects..."):
-        lbl_path = image_path.replace(".jpg", ".txt")
+    for idx, image_path in tqdm(enumerate(image_paths), desc = "Detecting objects..."):        
+        dirname  = os.path.basename(image_path).split("_")[0]
+        lbl_path = f"{lbls_dir}/{dirname}/{os.path.basename(image_path).replace('.jpg', '.txt')}"
+        # lbl_path = image_path.replace(".jpg", ".txt")        
+
         # if not os.path.basename(image_path) in ["000000ad_72704_197632.jpg", "000000ad_102400_191488.jpg", "000009ac_98304_197632.jpg", "00000a1d_19456_236544.jpg"]: continue
         # if not os.path.basename(image_path) in ["00000a1d_19456_236544.jpg"]: continue
         # if idx == 205: break
@@ -406,7 +371,7 @@ if __name__ == "__main__":
         # print(f"before pred_phrases -> {pred_phrases}")
         # boxes_filt, pred_phrases = filter_large_bboxes_with_phrases(boxes_filt, pred_phrases)        
         # boxes_filt, pred_phrases = apply_nms_and_filter_boxes(boxes_filt, pred_phrases, iou_thresh=0.5)
-        boxes_filt, pred_phrases = nms_by_confidence(boxes_filt, pred_phrases, iou_threshold=0.5)
+        boxes_filt, pred_phrases = nms_by_confidence(boxes_filt, pred_phrases, iou_threshold=0.05)
 
         # print(f"after boxes_filt-> {boxes_filt}")
         # print(f"after pred_phrases -> {pred_phrases}")
