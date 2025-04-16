@@ -152,7 +152,8 @@ else:  # English interface
     image_dir = st.text_input("Image Folder Path (Optional)", "lp_images/")
 
 # Initialize model
-device = "cpu" if cpu_only else "cuda"
+# device = "cpu" if cpu_only else "cuda"
+device = "cpu"
 
 if not os.path.isfile(checkpoint_path):    
     with st.spinner("Please wait we are downloading the pretrained weights..."):
