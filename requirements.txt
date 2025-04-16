@@ -8,6 +8,5 @@ timm
 numpy
 supervision>=0.22.0
 pycocotools
-tesseract-ocr
 pytesseract
 streamlit==1.44.1
