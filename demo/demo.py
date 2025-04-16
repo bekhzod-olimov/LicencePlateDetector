@@ -108,7 +108,7 @@ class GroundingDINOApp:
     
 # Language selection
 st.set_page_config(page_title="Grounding DINO Streamlit Demo", layout="centered")
-lang = st.sidebar.selectbox("🌐 Select Language / 언어 선택", ["Korean", "English"])
+lang = st.sidebar.selectbox("🌐 Select Language / 언어 선택", ["English", "Korean"])
 
 # Language-specific text
 if lang == "Korean":
