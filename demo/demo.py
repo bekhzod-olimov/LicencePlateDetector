@@ -6,7 +6,7 @@ torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__
 # torch.classes.__path__ = []
 import sys
 sys.path.append("./")
-
+import gc
 import numpy as np
 import urllib.request
 import streamlit as st
@@ -29,8 +29,7 @@ class GroundingDINOApp:
         self.cpu_only = cpu_only        
         self.device   = device
         self.model = self.load_model(config_path, checkpoint_path)
-
-    @st.cache_resource
+    
     def load_model(self, config_path, checkpoint_path):        
         args = SLConfig.fromfile(config_path)
         args.device = self.device
@@ -108,12 +107,12 @@ class GroundingDINOApp:
         return cropped, text.strip()
     
 # Language selection
-st.set_page_config(page_title="Grounding DINO Streamlit Demo", layout="centered")
+st.set_page_config(page_title="Streamlit Demo", layout="centered")
 lang = st.sidebar.selectbox("🌐 Select Language / 언어 선택", ["English", "Korean"])
 
 # Language-specific text
 if lang == "Korean":
-    st.title("🔍 Grounding DINO 데모")
+    st.title("🔍 차량 번호판 인식 데모")
     st.write("이미지를 업로드하고 텍스트 프롬프트에 따라 객체를 탐지해보세요.")
     mode = st.radio("모드 선택", ["이미지", "비디오"])
 
@@ -121,7 +120,7 @@ if lang == "Korean":
         st.header("설정")
         config_path = st.text_input("설정 파일 경로", "groundingdino/config/GroundingDINO_SwinT_OGC.py")
         checkpoint_path = st.text_input("체크포인트 파일 경로", "groundingdino_swint_ogc.pth")
-        cpu_only = st.checkbox("CPU만 사용", value=False)
+        cpu_only = st.checkbox("CPU만 사용", value=True)
         box_thresh = st.slider("박스 임계값", 0.0, 1.0, 0.3, 0.05)
         text_thresh = st.slider("텍스트 임계값", 0.0, 1.0, 0.3, 0.05)
 
@@ -134,7 +133,7 @@ if lang == "Korean":
     image_dir = st.text_input("이미지 폴더 경로 (선택 사항)", "lp_images/")
 
 else:  # English interface
-    st.title("🔍 Grounding DINO Demo")
+    st.title("🔍 Licence Plate Detector Demo")
     st.write("Upload an image and detect objects based on your text prompt.")
     mode = st.radio("Select Mode", ["Image", "Video"])
 
@@ -142,7 +141,7 @@ else:  # English interface
         st.header("Settings")
         config_path = st.text_input("Configuration File Path", "groundingdino/config/GroundingDINO_SwinT_OGC.py")
         checkpoint_path = st.text_input("Checkpoint File Path", "groundingdino_swint_ogc.pth")
-        cpu_only = st.checkbox("Use CPU only", value=False)
+        cpu_only = st.checkbox("Use CPU only", value=True)
         box_thresh = st.slider("Box Threshold", 0.0, 1.0, 0.3, 0.05)
         text_thresh = st.slider("Text Threshold", 0.0, 1.0, 0.3, 0.05)
 
@@ -153,27 +152,39 @@ else:  # English interface
     image_dir = st.text_input("Image Folder Path (Optional)", "lp_images/")
 
 # Initialize model
-device = "cpu" if cpu_only else "cuda"
+# device = "cpu" if cpu_only else "cuda"
+device = "cpu"
+# print(f"device -> {device}")
 
 if not os.path.isfile(checkpoint_path):    
     with st.spinner("Please wait we are downloading the pretrained weights..."):
         urllib.request.urlretrieve(
             "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth", f"{checkpoint_path}"
         )
-    st.success("Pretrained weights have been downloaded!")        
+    st.success("Pretrained weights have been downloaded!")    
 
-g_dino = GroundingDINOApp(config_path=config_path, checkpoint_path=checkpoint_path, cpu_only=cpu_only, device=device)
+
+
+@st.cache_resource
+def load_model(): return GroundingDINOApp(config_path=config_path, checkpoint_path=checkpoint_path, cpu_only=cpu_only, device=device)
+
+g_dino = load_model()
+
+@st.cache_data
+def get_random_images(image_dir, sample_size=10):
+    image_paths = glob(os.path.join(image_dir, "*.[jp][pn]g"))
+    random.shuffle(image_paths)
+    return image_paths[:sample_size]
 
 detection_triggered = False
 detection_image = None
 original_cv2 = None
 ocr_text = ""
+preview_cache = {}
 
 if mode == ("이미지" if lang == "Korean" else "Image"):
     if os.path.isdir(image_dir):
-        image_paths = glob(os.path.join(image_dir, "*.[jp][pn]g"))
-        random.shuffle(image_paths)
-        selected_images = image_paths[:10]
+        selected_images = get_random_images(image_dir)
 
         st.markdown("### 🖼️ 랜덤 이미지 미리보기" if lang == "Korean" else "### 🖼️ Random Image Preview")
         rows = [selected_images[i:i+5] for i in range(0, len(selected_images), 5)]
@@ -181,15 +192,19 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
             cols = st.columns(5)
             for col, img_path in zip(cols, row):
                 with col:
-                    with Image.open(img_path) as pil_img:
-                        preview_img = ImageOps.fit(pil_img.convert("RGB"), (200, 200))
-                        st.image(preview_img, caption=os.path.basename(img_path), use_container_width=False)
+                    if img_path not in preview_cache:
+                        with Image.open(img_path) as pil_img:
+                            pil_img = pil_img.convert("RGB")
+                            preview_img = ImageOps.fit(pil_img, (200, 200))
+                            preview_cache[img_path] = (preview_img, pil_img.copy())
+                            pil_img.close()
+                    preview_img, full_img = preview_cache[img_path]
+                    st.image(preview_img, caption=os.path.basename(img_path), use_container_width=False)
 
                     if st.button("위 이미지 탐지하기" if lang == "Korean" else "Detect from Image", key=img_path):
                         detection_triggered = True
-                        with Image.open(img_path) as img:
-                            detection_image = img.convert("RGB")
-                            original_cv2 = np.array(detection_image)
+                        detection_image = full_img
+                        original_cv2 = np.array(detection_image)
 
     elif image_dir.strip():
         st.warning("입력한 이미지 폴더 경로가 잘못되었거나 폴더가 비어있습니다." if lang == "Korean" else "Invalid image folder path or folder is empty.")
@@ -217,12 +232,13 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
                 st.subheader("📝 OCR 결과" if lang == "Korean" else "📝 OCR Result")
                 st.image(cropped_img, caption="잘라낸 영역" if lang == "Korean" else "Cropped Region", use_container_width=True)
 
-                cleaned_text = re.sub(r'[^A-Za-z0-9\- ]', '', ocr_text)
+                cleaned_text = re.sub(r'[^A-Za-z0-9\- ]', '', ocr_text[:300])
                 st.success(f"OCR 인식 결과: {cleaned_text}" if lang == "Korean" else f"OCR Result: {cleaned_text}")
                 del cropped_img
             else:
                 st.warning("탐지된 객체가 없습니다." if lang == "Korean" else "No object detected.")
-            del result_image, detection_image, original_cv2
+            del result_image, detection_image, original_cv2, image_tensor
+            gc.collect()
 
 else:
     st.markdown("### 🎞️ 비디오 탐지 모드" if lang == "Korean" else "### 🎞️ Video Detection Mode")
@@ -237,7 +253,7 @@ else:
             fps = int(cap.get(cv2.CAP_PROP_FPS))
             st.info(f"FPS: {fps}")
             frame_num = 0
-            max_frames = 30  # limit processing for low RAM
+            max_frames = 30  # Limit for low memory
 
             while cap.isOpened() and frame_num < max_frames:
                 ret, frame = cap.read()
@@ -246,6 +262,13 @@ else:
 
                 if frame_num % fps == 0:  # Process every second
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                    # Resize for memory efficiency
+                    max_width = 640
+                    if rgb_frame.shape[1] > max_width:
+                        scale = max_width / rgb_frame.shape[1]
+                        rgb_frame = cv2.resize(rgb_frame, (0, 0), fx=scale, fy=scale)
+
                     pil_image = Image.fromarray(rgb_frame)
 
                     with st.spinner(f"{frame_num // fps + 1}초 프레임 탐지 중..." if lang == "Korean" else f"Detecting frame at {frame_num // fps + 1} sec..."):
@@ -258,13 +281,13 @@ else:
 
                         if len(boxes) > 0:
                             cropped_img, ocr_text = g_dino.crop_and_ocr(frame, boxes[0])
-                            cleaned_text = re.sub(r'[^A-Za-z0-9\- ]', '', ocr_text)
+                            cleaned_text = re.sub(r'[^A-Za-z0-9\- ]', '', ocr_text[:300])
                             st.success(f"OCR 인식 결과: {cleaned_text}" if lang == "Korean" else f"OCR Result: {cleaned_text}")
                             del cropped_img
                         else:
                             st.info("탐지된 객체 없음" if lang == "Korean" else "No object detected")
                         del result_image, pil_image, image_tensor
+                        gc.collect()
 
                 frame_num += 1
-
             cap.release()
