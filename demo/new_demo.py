@@ -107,12 +107,12 @@ class GroundingDINOApp:
         return cropped, text.strip()
     
 # Language selection
-st.set_page_config(page_title="Grounding DINO Streamlit Demo", layout="centered")
+st.set_page_config(page_title="Streamlit Demo", layout="centered")
 lang = st.sidebar.selectbox("🌐 Select Language / 언어 선택", ["English", "Korean"])
 
 # Language-specific text
 if lang == "Korean":
-    st.title("🔍 Grounding DINO 데모")
+    st.title("🔍 차량 번호판 인식 데모")
     st.write("이미지를 업로드하고 텍스트 프롬프트에 따라 객체를 탐지해보세요.")
     mode = st.radio("모드 선택", ["이미지", "비디오"])
 
@@ -133,7 +133,7 @@ if lang == "Korean":
     image_dir = st.text_input("이미지 폴더 경로 (선택 사항)", "lp_images/")
 
 else:  # English interface
-    st.title("🔍 Grounding DINO Demo")
+    st.title("🔍 Licence Plate Detector Demo")
     st.write("Upload an image and detect objects based on your text prompt.")
     mode = st.radio("Select Mode", ["Image", "Video"])
 
