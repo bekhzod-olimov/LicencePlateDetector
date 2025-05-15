@@ -24,10 +24,12 @@ import torch.nn.functional as F
 from torch.autograd import Function
 from torch.autograd.function import once_differentiable
 from torch.nn.init import constant_, xavier_uniform_
-import sys
-# sys.path.append("/home/bekhzod/Desktop/localization_models_performance/GroundingDINO")
 
-from groundingdino import _C
+try:
+    from groundingdino import _C
+except:
+    warnings.warn("Failed to load custom C++ ops. Running on CPU mode Only!")
+
 
 # helpers
 def _is_power_of_2(n):
@@ -325,8 +327,8 @@ class MultiScaleDeformableAttention(nn.Module):
                 )
             )
     
-        # if not torch.cuda.is_available():
-        if torch.cuda.is_available() and value.is_cuda:            
+        if not torch.cuda.is_available():
+        # if torch.cuda.is_available() and value.is_cuda:
             halffloat = False
             if value.dtype == torch.float16:
                 halffloat = True
@@ -346,7 +348,6 @@ class MultiScaleDeformableAttention(nn.Module):
             if halffloat:
                 output = output.half()
         else:
-            
             output = multi_scale_deformable_attn_pytorch(
                 value, spatial_shapes, sampling_locations, attention_weights
             )
