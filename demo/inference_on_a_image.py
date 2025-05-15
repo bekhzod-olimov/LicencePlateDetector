@@ -109,8 +109,7 @@ def load_model(model_config_path, model_checkpoint_path, cpu_only=False):
     args.device = "cuda" if not cpu_only else "cpu"
     model = build_model(args)
     checkpoint = torch.load(model_checkpoint_path, map_location="cpu")
-    load_res = model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
-    print(load_res)
+    load_res = model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)    
     _ = model.eval()
     return model
 
@@ -302,7 +301,7 @@ if __name__ == "__main__":
         "--checkpoint_path", "-p", type=str, required=True, help="path to checkpoint file"
     )
     parser.add_argument("--image_path", "-i", type=str, default=None, help="path to image file")
-    parser.add_argument("--image_dir", "-id", default=None, type=str, help="path to image dir")
+    # parser.add_argument("--image_dir", "-id", default=None, type=str, help="path to image dir")
     parser.add_argument("--text_prompt", "-t", type=str, required=True, help="text prompt")
     parser.add_argument(
         "--output_dir", "-o", type=str, default="outputs", required=True, help="output directory"
@@ -324,7 +323,8 @@ if __name__ == "__main__":
     config_file = args.config_file  # change the path of the model config file
     checkpoint_path = args.checkpoint_path  # change the path of the model
     image_paths = [args.image_path]
-    image_dir = args.image_dir
+    lbls_dir = "/mnt/data/cervical_screening/classification/hospital_dataset/25_05_07_test"
+    image_paths = glob(f"{lbls_dir}/*/abnormal/*.jpg")
     text_prompt = args.text_prompt
     box_threshold = args.box_threshold
     text_threshold = args.text_threshold
@@ -334,18 +334,20 @@ if __name__ == "__main__":
     im_files = [".png", ".jpg", ".jpeg", ".bmp"]
     # make dir
     os.makedirs(output_dir, exist_ok=True)
-    lbls_dir = "/mnt/data/cervical_screening/classification/hospital_dataset/25_04_02_1024"
+    # lbls_dir = "/mnt/data/cervical_screening/classification/hospital_dataset/25_04_02_1024"
+    
     
     # load model
     model = load_model(config_file, checkpoint_path, cpu_only=args.cpu_only)
 
-    # if image_dir: image_paths = glob(f"{image_dir}/*/*{[im_file for im_file in im_files]}")    
-    # if image_dir: image_paths = glob(f"{image_dir}/*/*.jpg")    
-    if image_dir: image_paths = glob(f"{image_dir}/*.jpg")    
+      
+    # if image_dir: image_paths = glob(f"{image_dir}/*.jpg")    
     start = time()
-    for idx, image_path in tqdm(enumerate(image_paths), desc = "Detecting objects..."):        
-        dirname  = os.path.basename(image_path).split("_")[0]
-        lbl_path = f"{lbls_dir}/{dirname}/{os.path.basename(image_path).replace('.jpg', '.txt')}"
+    for idx, image_path in tqdm(enumerate(image_paths), desc = "Detecting objects..."):         
+        start_time = time()       
+        type = os.path.basename(image_path).split("_")[0] 
+        dirname  = os.path.basename(image_path).split()[-1].split("_")[2]
+        lbl_path = f"{lbls_dir}/{dirname}/{os.path.basename(image_path.split(f'{type}_{type}_')[-1]).replace('.jpg', '.txt')}"
         # lbl_path = image_path.replace(".jpg", ".txt")        
 
         # if not os.path.basename(image_path) in ["000000ad_72704_197632.jpg", "000000ad_102400_191488.jpg", "000009ac_98304_197632.jpg", "00000a1d_19456_236544.jpg"]: continue
@@ -372,7 +374,7 @@ if __name__ == "__main__":
         # boxes_filt, pred_phrases = filter_large_bboxes_with_phrases(boxes_filt, pred_phrases)        
         # boxes_filt, pred_phrases = apply_nms_and_filter_boxes(boxes_filt, pred_phrases, iou_thresh=0.5)
         boxes_filt, pred_phrases = nms_by_confidence(boxes_filt, pred_phrases, iou_threshold=0.05)
-
+        print(f"Inference is done in -> {time() - start_time:.3f} secs")
         # print(f"after boxes_filt-> {boxes_filt}")
         # print(f"after pred_phrases -> {pred_phrases}")
 
