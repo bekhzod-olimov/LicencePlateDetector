@@ -1,4 +1,4 @@
-import os
+import os, gc
 import cv2
 import torch
 torch.classes.__path__ = [os.path.join(torch.__path__[0], torch.classes.__file__)] 
@@ -40,11 +40,17 @@ class GroundingDINOApp:
         return model.to(self.device)
 
     def preprocess_image(self, image_pil):
+
+        # Downsample large images
+        if max(image_pil.size) > 1024:
+            image_pil = image_pil.resize((1024, 1024))
+        
         transform = T.Compose([
             T.RandomResize([800], max_size=1333),
             T.ToTensor(),
             T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
+        
         image, _ = transform(image_pil, None)
         return image_pil, image.to(self.device)
 
@@ -98,14 +104,15 @@ class GroundingDINOApp:
         x2 = int((cx + bw / 2) * W)
         y2 = int((cy + bh / 2) * H)
 
-        x1, y1 = max(0, x1), max(0, y1)
+        x1, y1 = max(0, x1), max(0, y1)        
         x2, y2 = min(W, x2), min(H, y2)
+
 
         cropped = original_image[y1:y2, x1:x2]
         text = pytesseract.image_to_string(cropped, config='--psm 7')  
         
-        return cropped, text.strip()
-    
+        return cropped, text.strip()                
+        
 # Language selection
 st.set_page_config(page_title="Streamlit Demo", layout="centered")
 lang = st.sidebar.selectbox("🌐 Select Language / 언어 선택", ["English", "Korean"])
@@ -151,10 +158,8 @@ else:  # English interface
     uploaded_image = st.file_uploader("Or upload an image", type=["png", "jpg", "jpeg"])
     image_dir = st.text_input("Image Folder Path (Optional)", "lp_images/")
 
-# Initialize model
-# device = "cpu" if cpu_only else "cuda"
+# Initialize model only with cpu
 device = "cpu"
-# print(f"device -> {device}")
 
 if not os.path.isfile(checkpoint_path):    
     with st.spinner("Please wait we are downloading the pretrained weights..."):
@@ -163,10 +168,13 @@ if not os.path.isfile(checkpoint_path):
         )
     st.success("Pretrained weights have been downloaded!")    
 
-
-
-@st.cache_resource
-def load_model(): return GroundingDINOApp(config_path=config_path, checkpoint_path=checkpoint_path, cpu_only=cpu_only, device=device)
+@st.cache_resource(show_spinner=False, max_entries=1)
+def load_model():
+    model = GroundingDINOApp(config_path=config_path, checkpoint_path=checkpoint_path, cpu_only=cpu_only, device=device)
+    # Freeze model weights
+    for param in model.model.parameters():
+        param.requires_grad_(False)
+    return model
 
 g_dino = load_model()
 
@@ -215,30 +223,35 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
         detection_triggered = True
 
     if detection_triggered and detection_image is not None:
-        st.markdown("---")
-        st.markdown("### 🔍 탐지 결과" if lang == "Korean" else "### 🔍 Detection Results")
-        st.image(detection_image, caption="원본 이미지" if lang == "Korean" else "Original Image", use_container_width=True)
+        try:
+            st.markdown("---")
+            st.markdown("### 🔍 탐지 결과" if lang == "Korean" else "### 🔍 Detection Results")
+            st.image(detection_image, caption="원본 이미지" if lang == "Korean" else "Original Image", use_container_width=True)
 
-        with st.spinner("탐지 중..." if lang == "Korean" else "Detecting..."):
-            _, image_tensor = g_dino.preprocess_image(detection_image)
-            boxes, phrases = g_dino.get_grounding_output(image_tensor, text_prompt, box_thresh, text_thresh)
-            boxes = boxes.to(device)
+            with st.spinner("탐지 중..." if lang == "Korean" else "Detecting..."):
+                _, image_tensor = g_dino.preprocess_image(detection_image)
+                boxes, phrases = g_dino.get_grounding_output(image_tensor, text_prompt, box_thresh, text_thresh)
+                boxes = boxes.to(device)
 
-            result_image = g_dino.plot_boxes(detection_image, boxes, phrases)
-            st.image(result_image, caption="탐지된 결과" if lang == "Korean" else "Detected Results", use_container_width=True)
+                result_image = g_dino.plot_boxes(detection_image, boxes, phrases)
+                st.image(result_image, caption="탐지된 결과" if lang == "Korean" else "Detected Results", use_container_width=True)
 
-            if len(boxes) > 0:
-                cropped_img, ocr_text = g_dino.crop_and_ocr(original_cv2, boxes[0])
-                st.subheader("📝 OCR 결과" if lang == "Korean" else "📝 OCR Result")
-                st.image(cropped_img, caption="잘라낸 영역" if lang == "Korean" else "Cropped Region", use_container_width=True)
+                if len(boxes) > 0:
+                    cropped_img, ocr_text = g_dino.crop_and_ocr(original_cv2, boxes[0])
+                    st.subheader("📝 OCR 결과" if lang == "Korean" else "📝 OCR Result")
+                    st.image(cropped_img, caption="잘라낸 영역" if lang == "Korean" else "Cropped Region", use_container_width=True)
 
-                cleaned_text = re.sub(r'[^A-Za-z0-9\- ]', '', ocr_text[:300])
-                st.success(f"OCR 인식 결과: {cleaned_text}" if lang == "Korean" else f"OCR Result: {cleaned_text}")
-                del cropped_img
-            else:
-                st.warning("탐지된 객체가 없습니다." if lang == "Korean" else "No object detected.")
-            del result_image, detection_image, original_cv2, image_tensor
+                    cleaned_text = re.sub(r'[^A-Za-z0-9\- ]', '', ocr_text[:300])
+                    st.success(f"OCR 인식 결과: {cleaned_text}" if lang == "Korean" else f"OCR Result: {cleaned_text}")
+                    del cropped_img
+                else:
+                    st.warning("탐지된 객체가 없습니다." if lang == "Korean" else "No object detected.")                
+        finally:
+            # Force cleanup
+            del image_tensor, boxes, phrases, result_image
+            if 'cropped_img' in locals(): del cropped_img
             gc.collect()
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None            
 
 else:
     st.markdown("### 🎞️ 비디오 탐지 모드" if lang == "Korean" else "### 🎞️ Video Detection Mode")
@@ -260,7 +273,7 @@ else:
                 if not ret:
                     break
 
-                if frame_num % fps == 0:  # Process every second
+                if frame_num % (fps * 2) == 0:
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
                     # Resize for memory efficiency
@@ -290,4 +303,6 @@ else:
                         gc.collect()
 
                 frame_num += 1
+                del frame
+
             cap.release()
