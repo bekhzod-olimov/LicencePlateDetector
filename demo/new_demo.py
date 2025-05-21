@@ -173,7 +173,7 @@ if not os.path.isfile(checkpoint_path):
 
 @st.cache_resource(show_spinner=False, max_entries=1)
 def load_model():
-    model = GroundingDINOApp(...)
+    model = GroundingDINOApp(config_path=config_path, checkpoint_path=checkpoint_path, cpu_only=cpu_only, device=device)
     # Freeze model weights
     for param in model.model.parameters():
         param.requires_grad_(False)
