@@ -108,12 +108,8 @@ class GroundingDINOApp:
         x2, y2 = min(W, x2), min(H, y2)
 
         cropped = original_image[y1:y2, x1:x2]
-
-         # Limit OCR region size
-        if cropped.shape[0] * cropped.shape[1] > 500*500: cropped = cv2.resize(cropped, (500, 500))
-
-        # Use faster OCR config
-        text = pytesseract.image_to_string(cropped, config='--psm 7 --oem 1')
+        text = pytesseract.image_to_string(cropped, config='--psm 7')  
+        
         return cropped, text.strip()                
         
 # Language selection
@@ -248,9 +244,7 @@ if mode == ("이미지" if lang == "Korean" else "Image"):
                     st.success(f"OCR 인식 결과: {cleaned_text}" if lang == "Korean" else f"OCR Result: {cleaned_text}")
                     del cropped_img
                 else:
-                    st.warning("탐지된 객체가 없습니다." if lang == "Korean" else "No object detected.")
-                del result_image, detection_image, original_cv2, image_tensor
-                gc.collect()
+                    st.warning("탐지된 객체가 없습니다." if lang == "Korean" else "No object detected.")                
         finally:
             # Force cleanup
             del image_tensor, boxes, phrases, result_image
