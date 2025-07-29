@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
-from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from timm.layers import DropPath, to_2tuple, trunc_normal_
 
 from groundingdino.util.misc import NestedTensor
 
@@ -445,7 +445,7 @@ class BasicLayer(nn.Module):
         for blk in self.blocks:
             blk.H, blk.W = H, W
             if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x, attn_mask)
+                x = checkpoint.checkpoint(blk, x, attn_mask, use_reentrant=False)
             else:
                 x = blk(x, attn_mask)
         if self.downsample is not None:
@@ -559,10 +559,7 @@ class SwinTransformer(nn.Module):
         self.patch_norm = patch_norm
         self.out_indices = out_indices
         self.frozen_stages = frozen_stages
-        self.dilation = dilation
-
-        # if use_checkpoint:
-        #     print("use_checkpoint!!!!!!!!!!!!!!!!!!!!!!!!")
+        self.dilation = dilation        
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
