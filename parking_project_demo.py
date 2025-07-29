@@ -169,14 +169,10 @@ class GroundingDINOLicensePlateRecognizer:
         text = pytesseract.image_to_string(cropped, config='--psm 7')
         return cropped, text.strip()
 
-    def detect_plate(self, frame, text_prompt="license plate", box_thresh=None, text_thresh=None):
-        """
-        frame: OpenCV BGR image (numpy array)
-        Returns: license plate string (if found), else None
-        """
+    def detect_plate_with_box(self, frame, text_prompt="license plate", box_thresh=None, text_thresh=None):
         pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         _, image_tensor = self.preprocess_image(pil_image)
-        boxes, phrases, scores = self.get_grounding_output(
+        boxes, _, _ = self.get_grounding_output(
             image_tensor, text_prompt, box_thresh=box_thresh, text_thresh=text_thresh
         )
         boxes = boxes.to(self.device)
@@ -184,8 +180,10 @@ class GroundingDINOLicensePlateRecognizer:
             cropped_img, text = self.crop_and_ocr(frame, box)
             plate = "".join(c for c in text if c.isalnum())
             if 5 < len(plate) < 13:
-                return plate.upper()
-        return None
+                # Return both plate and box
+                return plate.upper(), box
+        return None, None
+
 
 import streamlit as st
 import cv2
@@ -313,26 +311,36 @@ if st.session_state.detection_running:
                 break
 
             frame_disp = frame.copy()
-            plate = recognizer.detect_plate(frame)
+            plate, box = recognizer.detect_plate_with_box(frame)
             now = datetime.now()
 
-            if plate is not None:
+            if plate is not None and box is not None:
+                H, W, _ = frame_disp.shape
+                cx, cy, bw, bh = box.tolist()
+                x1 = int((cx - bw / 2) * W)
+                y1 = int((cy - bh / 2) * H)
+                x2 = int((cx + bw / 2) * W)
+                y2 = int((cy + bh / 2) * H)
                 last_time = st.session_state.last_event_time.get(plate)
                 if last_time is None or (now - last_time).total_seconds() > debounce_seconds:
                     if not plate_has_open_entry(conn, plate):
+                        # IN event
                         insert_entry(conn, plate, now.strftime("%Y-%m-%d %H:%M:%S"))
                         st.session_state.last_event_time[plate] = now
+
+                        cv2.rectangle(frame_disp, (x1, y1), (x2, y2), (0, 255, 0), 2)
                         cv2.putText(
                             frame_disp,
                             f"{STR['entry_label']}: {plate}",
-                            (10, 60),
+                            (x1, y1 - 10 if y1 > 20 else y2 + 30),
                             cv2.FONT_HERSHEY_SIMPLEX,
-                            2,
+                            0.8,
                             (0, 255, 0),
-                            3,
+                            2,
                         )
                         st.success(f"{STR['detection']}{plate} {STR['in_label']}")
                     else:
+                        # OUT event
                         entry_df = pd.read_sql_query(
                             "SELECT entry_time FROM parking WHERE plate=? AND (exit_time='' OR exit_time IS NULL) ORDER BY entry_time DESC LIMIT 1",
                             conn,
@@ -340,7 +348,7 @@ if st.session_state.detection_running:
                         )
                         if entry_df.empty:
                             insert_entry(conn, plate, now.strftime("%Y-%m-%d %H:%M:%S"))
-                            st.success(f"{STR['detection']}{plate} (IN, no entry found!)")
+                            st.success(f"{STR['detection']}{plate} {STR['in_label']}, no entry found!")
                         else:
                             entry_time_str = entry_df.iloc[0]["entry_time"]
                             entry_time = datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
@@ -349,16 +357,18 @@ if st.session_state.detection_running:
                             fee = round(duration_min / 60 * fee_per_hour, 2)
                             update_exit(conn, plate, exit_time.strftime("%Y-%m-%d %H:%M:%S"), fee)
                             st.session_state.last_event_time[plate] = now
+
+                            cv2.rectangle(frame_disp, (x1, y1), (x2, y2), (0, 0, 255), 2)
                             cv2.putText(
                                 frame_disp,
-                                f"OUT: {plate} {fee}",
-                                (10, 120),
+                                f"{STR['exit_label']}: {plate} {fee}",
+                                (x1, y1 - 10 if y1 > 20 else y2 + 30),
                                 cv2.FONT_HERSHEY_SIMPLEX,
-                                2,
+                                0.8,
                                 (0, 0, 255),
-                                3,
+                                2,
                             )
-                            st.success(f"{STR['left']}{fee}")
+                            st.success(f"{STR['left']}{fee} {STR['out_label']}")
 
             img = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
             running.image(img, channels="RGB", use_container_width=True)
