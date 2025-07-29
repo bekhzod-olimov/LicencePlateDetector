@@ -361,7 +361,7 @@ if st.session_state.detection_running:
                             cv2.rectangle(frame_disp, (x1, y1), (x2, y2), (0, 0, 255), 2)
                             cv2.putText(
                                 frame_disp,
-                                f"{STR['exit_label']}: {plate} {fee}",
+                                f"{STR['exit_label']}: {plate}",
                                 (x1, y1 - 10 if y1 > 20 else y2 + 30),
                                 cv2.FONT_HERSHEY_SIMPLEX,
                                 0.8,
