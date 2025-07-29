@@ -87,82 +87,100 @@ LANGS = {
 }
 
 import torch
+import cv2
+from PIL import Image
+import numpy as np
+import pytesseract
+
 from groundingdino.models import build_model
 from groundingdino.util.utils import clean_state_dict, get_phrases_from_posmap
 from groundingdino.util.slconfig import SLConfig
+import groundingdino.datasets.transforms as T
 
-config_path="groundingdino/config/GroundingDINO_SwinT_OGC.py"
-checkpoint_path="/home/bekhzod/Desktop/localization_models_performance/UzbekLicencePlateDetectorRecognizer/groundingdino_swint_ogc.pth"
-args = SLConfig.fromfile(config_path)
-device = "cuda" if torch.cuda.is_available else "cpu"
-model = build_model(args)
-checkpoint = torch.load(checkpoint_path, map_location="cpu")
-model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
-model.eval()
-model.to(device)
+class GroundingDINOLicensePlateRecognizer:
+    def __init__(self, config_path, checkpoint_path, device=None, box_thresh=0.3, text_thresh=0.3):
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        # Load model config and weights
+        args = SLConfig.fromfile(config_path)
+        args.device = self.device
+        self.model = build_model(args)
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        self.model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
+        self.model.eval()
+        self.model.to(self.device)
+        self.box_thresh = box_thresh
+        self.text_thresh = text_thresh
 
-def crop_and_ocr( original_image, box):
-        H, W, _ = original_image.shape
-        cx, cy, bw, bh = box.tolist()
-        x1 = int((cx - bw / 2) * W); y1 = int((cy - bh / 2) * H)
-        x2 = int((cx + bw / 2) * W); y2 = int((cy + bh / 2) * H)
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(W, x2), min(H, y2)
-        cropped = original_image[y1:y2, x1:x2]
-        text = pytesseract.image_to_string(cropped, config='--psm 7')  
-        return cropped, text.strip()
-
-def get_grounding_output(image_tensor, caption, box_thresh, text_thresh):
-        image_tensor = image_tensor.to(device)
-        caption = caption.strip().lower()
-        if not caption.endswith("."):
-            caption += "."
-        with torch.no_grad():
-            outputs = model(image_tensor[None], captions=[caption])
-        logits = outputs["pred_logits"].sigmoid()[0]
-        boxes = outputs["pred_boxes"][0]
-        filt_mask = logits.max(dim=1)[0] > box_thresh
-        logits_filt = logits[filt_mask]
-        boxes_filt = boxes[filt_mask]
-        scores = logits_filt.max(dim=1)[0].cpu().numpy() if logits_filt is not None else []
-        tokenized = model.tokenizer(caption)
-        pred_phrases = [
-            get_phrases_from_posmap(logit > text_thresh, tokenized, model.tokenizer) +
-            f" ({logit.max().item():.2f})"
-            for logit in logits_filt
-        ]
-        return boxes_filt, pred_phrases, scores
-
-
-def preprocess_image(image_pil):
-        import groundingdino.datasets.transforms as T
+    def preprocess_image(self, image_pil):
         transform = T.Compose([
             T.RandomResize([800], max_size=1333),
             T.ToTensor(),
             T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
         image, _ = transform(image_pil, None)
-        return image_pil, image.to(device)
+        return image_pil, image.to(self.device)
 
-def detect_plate(frame, text_prompt="license plate", box_thresh=0.3, text_thresh=0.3):    
+    def get_grounding_output(self, image_tensor, caption, box_thresh=None, text_thresh=None):
+        box_thresh = box_thresh if box_thresh is not None else self.box_thresh
+        text_thresh = text_thresh if text_thresh is not None else self.text_thresh
+        image_tensor = image_tensor.to(self.device)
+        caption = caption.strip().lower()
+        if not caption.endswith("."):
+            caption += "."
+        with torch.no_grad():
+            outputs = self.model(image_tensor[None], captions=[caption])
+        logits = outputs["pred_logits"].sigmoid()[0]
+        boxes = outputs["pred_boxes"][0]
+        filt_mask = logits.max(dim=1)[0] > box_thresh
+        logits_filt = logits[filt_mask]
+        boxes_filt = boxes[filt_mask]
+        scores = logits_filt.max(dim=1)[0].cpu().numpy() if logits_filt is not None else []
+        tokenized = self.model.tokenizer(caption)
+        pred_phrases = [
+            get_phrases_from_posmap(logit > text_thresh, tokenized, self.model.tokenizer) +
+            f" ({logit.max().item():.2f})"
+            for logit in logits_filt
+        ]
+        return boxes_filt, pred_phrases, scores
 
-    from PIL import Image
+    def crop_and_ocr(self, frame, box):
+        # frame: numpy array (H, W, 3), OpenCV format
+        H, W, _ = frame.shape
+        cx, cy, bw, bh = box.tolist()
+        x1 = int((cx - bw / 2) * W)
+        y1 = int((cy - bh / 2) * H)
+        x2 = int((cx + bw / 2) * W)
+        y2 = int((cy + bh / 2) * H)
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(W, x2), min(H, y2)
+        cropped = frame[y1:y2, x1:x2]
+        text = pytesseract.image_to_string(cropped, config='--psm 7')
+        return cropped, text.strip()
 
-    # Convert BGR numpy array (OpenCV) to RGB PIL Image
-    pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    def detect_plate(self, frame, text_prompt="license plate", box_thresh=None, text_thresh=None):
+        """
+        frame: OpenCV BGR image (numpy array)
+        Returns: license plate string (if found), else None
+        """
+        pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        _, image_tensor = self.preprocess_image(pil_image)
+        boxes, phrases, scores = self.get_grounding_output(
+            image_tensor, text_prompt, box_thresh=box_thresh, text_thresh=text_thresh
+        )
+        boxes = boxes.to(self.device)
+        for box in boxes:
+            cropped_img, text = self.crop_and_ocr(frame, box)
+            plate = "".join(c for c in text if c.isalnum())
+            if 5 < len(plate) < 13:
+                return plate.upper()
+        return None
 
-    # Preprocess and detect
-    _, image_tensor = preprocess_image(pil_image)
-    boxes, phrases, scores = get_grounding_output(image_tensor, text_prompt, box_thresh, text_thresh)
-    boxes = boxes.to(device)
+# Instantiate the recognizer ONCE
+recognizer = GroundingDINOLicensePlateRecognizer(
+    config_path="groundingdino/config/GroundingDINO_SwinT_OGC.py",
+    checkpoint_path="/home/bekhzod/Desktop/localization_models_performance/UzbekLicencePlateDetectorRecognizer/groundingdino_swint_ogc.pth"
+)
 
-    # If any license plate region detected
-    for box in boxes:
-        cropped_img, text = crop_and_ocr(frame, box)
-        plate = "".join(c for c in text if c.isalnum())
-        if 5 < len(plate) < 13:
-            return plate.upper()
-    return None  # If nothing was detected
 
 def init_db():
     conn = sqlite3.connect("parking.sqlite")
@@ -268,7 +286,7 @@ if st.session_state.detection_running:
                 break
 
             frame_disp = frame.copy()
-            plate = detect_plate(frame)
+            plate = recognizer.detect_plate(frame)
 
             if plate is not None:
                 now = datetime.now()
@@ -318,20 +336,20 @@ if st.session_state.detection_running:
             img = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
             running.image(img, channels="RGB", use_container_width=True)
 
-            frame_counter += 1
-            if frame_counter % 30 == 0:
-                df = query_data(conn)
-                table.dataframe(
-                    df.rename(
-                        columns={
-                            "plate": STR["plate"],
-                            "entry_time": STR["entry"],
-                            "exit_time": STR["exit"],
-                            "fee": STR["paid"],
-                        }
-                    ),
-                    use_container_width=True,
-                )
+            # frame_counter += 1
+            # if frame_counter % 30 == 0:
+            df = query_data(conn)
+            table.dataframe(
+                df.rename(
+                    columns={
+                        "plate": STR["plate"],
+                        "entry_time": STR["entry"],
+                        "exit_time": STR["exit"],
+                        "fee": STR["paid"],
+                    }
+                ),
+                use_container_width=True,
+            )
             if not st.session_state.detection_running:
                 break
 
