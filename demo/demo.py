@@ -125,7 +125,7 @@ if lang == "Korean":
 
     with st.sidebar:
         st.header("설정")
-        config_path = st.text_input("설정 파일 경로", "groundingdino/config/GroundingDINO_SwinT_OGC.py")
+        config_path = st.text_input("설정 파일 경로", "groundingdino/config/GroundingDINO_SwinT_OGC.py")        
         checkpoint_path = st.text_input("체크포인트 파일 경로", "groundingdino_swint_ogc.pth")
         cpu_only = st.checkbox("CPU만 사용", value=True)
         box_thresh = st.slider("박스 임계값", 0.0, 1.0, 0.3, 0.05)
