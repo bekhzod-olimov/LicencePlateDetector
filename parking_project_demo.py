@@ -257,7 +257,11 @@ lang_code = st.sidebar.selectbox(
 STR = LANGS[lang_code]
 st.title(STR["title"])
 fee_per_hour = st.sidebar.number_input(STR["fee_set"], min_value=0, value=2000 if lang_code == "uz" else 10)
-video_mode = st.sidebar.selectbox(STR["video_src"], [STR["webcam"], STR["ipcam"], STR["mp4"]])
+video_mode = st.sidebar.selectbox(
+    STR["video_src"],
+    [STR["webcam"], STR["ipcam"], STR["mp4"]],
+    index=2
+)
 
 if video_mode == STR["webcam"]:
     video_src = 0
