@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="transformers.m
 
 LANGS = {
     "en": {
-        "title": "🚗 Parking Management Demo",
+        "title": "🚗 AI Parking Management Demo",
         "sel_lang": "Language / 언어 / Til",
         "fee_set": "Set fee per hour ($)",
         "video_src": "Video Source",
@@ -38,10 +38,11 @@ LANGS = {
         "detection": "License plate detected: ",
         "left": "Vehicle exit recorded. Total fee: $",
         "err": "Camera error or source not found.",
-        "foot": "Demo: Streamlit Parking Management (3 Languages) | "
+        "currency": "dollars",
+        "foot": "Demo: AI Parking Management | "
     },
     "ko": {
-        "title": "🚗 주차 관리 데모",
+        "title": "🚗 AI주차 관리 데모",
         "sel_lang": "언어 / Language / Til",
         "fee_set": "시간당 요금 설정 (₩)",
         "video_src": "비디오 소스 선택",
@@ -66,10 +67,11 @@ LANGS = {
         "detection": "탐지된 번호판: ",
         "left": "차량이 출차되었습니다. 총 요금: ₩",
         "err": "카메라 오류 또는 소스 없음.",
-        "foot": "데모: 스트림릿 주차 관리 (3개 언어) | "
+        "currency": "원",
+        "foot": "데모: AI주차 관리 | "
     },
     "uz": {
-        "title": "🚗 Avtopark boshqaruvi demo",
+        "title": "🚗 AI Avtoturargoh Nazoratchisi demo",
         "sel_lang": "Til / Language / 언어",
         "fee_set": "Soatbay to'lovni belgilang (so'm)",
         "video_src": "Video manbasi",
@@ -83,7 +85,7 @@ LANGS = {
         "exit_label": "CHIQISH",   # "exited"
         "out_label": "CHIQMOQDA",  # out in Uzbek
         "stop": "To'xtatish",
-        "db_table": "Avtopark yozuvlari",
+        "db_table": "Avtoturargoh qaydnomasi",
         "download": "CSV yuklab olish",
         "plate": "Raqam belgisi",
         "entry": "Kirish vaqti",
@@ -91,10 +93,11 @@ LANGS = {
         "paid": "To'lov (so'm)",
         "no_plate": "Davlat raqami aniqlanmadi.",
         "wait_cam": "Kamera ishga tushirilmoqda...",
-        "detection": "Aniqlangan raqam: ",
-        "left": "Mashina chiqdi. Umumiy to'lov: ",
+        "detection": "Davlat Raqami ",
+        "left": "Umumiy to'lov ",
         "err": "Kamera xatosi yoki manba yo'q.",
-        "foot": "Demo: Streamlit avtopark boshqaruvi (3 til) | "
+        "currency": "so'm",
+        "foot": "AI Avtoturargoh Nazoratchisi | "
     }
 }
 
@@ -338,7 +341,7 @@ if st.session_state.detection_running:
                             (0, 255, 0),
                             2,
                         )
-                        st.success(f"{STR['detection']}{plate} {STR['in_label']}")
+                        st.success(f"{STR['detection']}{plate} {STR['in_label']}...")
                     else:
                         # OUT event
                         entry_df = pd.read_sql_query(
@@ -368,7 +371,7 @@ if st.session_state.detection_running:
                                 (0, 0, 255),
                                 2,
                             )
-                            st.success(f"{STR['left']}{fee} {STR['out_label']}")
+                            st.success(f"{STR['detection']}{plate} {STR['out_label']}... {STR['left']}{fee} {STR['currency']}.")
 
             img = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
             running.image(img, channels="RGB", use_container_width=True)
@@ -384,7 +387,7 @@ if st.session_state.detection_running:
                 ),
                 use_container_width=True,
             )
-            time.sleep(1)
+            time.sleep(1.5)
             if not st.session_state.detection_running:
                 break
     finally:
@@ -424,4 +427,4 @@ st.download_button(
     key="download_log_end",
 )
 st.markdown("---")
-st.caption(STR["foot"] + "github.com/your-demo-link-here")
+st.caption(STR["foot"] + "https://github.com/bekhzod-olimov/LicencePlateDetector")
