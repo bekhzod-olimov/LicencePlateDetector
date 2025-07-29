@@ -22,6 +22,10 @@ LANGS = {
         "mp4": "Video File (MP4)",
         "ip_url": "IP Camera URL",
         "start": "Start Detection",
+        "entry_label": "ENTRY",
+        "in_label": "(IN)",
+        "exit_label": "EXIT",
+        "out_label": "(OUT)",
         "stop": "Stop Detection",
         "db_table": "Parking Records",
         "download": "Download CSV",
@@ -46,6 +50,10 @@ LANGS = {
         "mp4": "비디오 파일 (MP4)",
         "ip_url": "IP 카메라 주소",
         "start": "탐지 시작",
+        "entry_label": "입차",  
+        "in_label": "(입장)",   
+        "exit_label": "출차",   
+        "out_label": "(퇴장)",  
         "stop": "탐지 중지",
         "db_table": "주차 기록",
         "download": "CSV 다운로드",
@@ -61,7 +69,7 @@ LANGS = {
         "foot": "데모: 스트림릿 주차 관리 (3개 언어) | "
     },
     "uz": {
-        "title": "🚗 Avtopark boshqaruvi demsi",
+        "title": "🚗 Avtopark boshqaruvi demo",
         "sel_lang": "Til / Language / 언어",
         "fee_set": "Soatbay to'lovni belgilang (so'm)",
         "video_src": "Video manbasi",
@@ -70,6 +78,10 @@ LANGS = {
         "mp4": "Video fayl (MP4)",
         "ip_url": "IP kamera manzili",
         "start": "Aniqlashni boshlash",
+        "entry_label": "KIRISH",   # Uzbek for "entered"
+        "in_label": "KIRMOQDA",    # in Uzbek style
+        "exit_label": "CHIQISH",   # "exited"
+        "out_label": "CHIQMOQDA",  # out in Uzbek
         "stop": "To'xtatish",
         "db_table": "Avtopark yozuvlari",
         "download": "CSV yuklab olish",
@@ -175,12 +187,25 @@ class GroundingDINOLicensePlateRecognizer:
                 return plate.upper()
         return None
 
-# Instantiate the recognizer ONCE
+import streamlit as st
+import cv2
+from PIL import Image
+import numpy as np
+import pytesseract
+import pandas as pd
+import sqlite3
+import tempfile
+from datetime import datetime
+import torch
+import time
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="transformers.modeling_utils")
+
+# Instantiate once
 recognizer = GroundingDINOLicensePlateRecognizer(
     config_path="groundingdino/config/GroundingDINO_SwinT_OGC.py",
     checkpoint_path="/home/bekhzod/Desktop/localization_models_performance/UzbekLicencePlateDetectorRecognizer/groundingdino_swint_ogc.pth"
 )
-
 
 def init_db():
     conn = sqlite3.connect("parking.sqlite")
@@ -224,19 +249,16 @@ def plate_has_open_entry(conn, plate):
     return not df.empty
 
 st.set_page_config(page_title="Parking Management Demo", layout="wide")
-
 lang_code = st.sidebar.selectbox(
     LANGS["en"]["sel_lang"],
     ["English", "Korean", "Uzbek"],
     format_func=lambda x: {"English": "English", "Korean": "한국어", "Uzbek": "Oʻzbek"}[x],
 ).lower()[:2]
 STR = LANGS[lang_code]
-
 st.title(STR["title"])
 fee_per_hour = st.sidebar.number_input(STR["fee_set"], min_value=0, value=2000 if lang_code == "uz" else 10)
 video_mode = st.sidebar.selectbox(STR["video_src"], [STR["webcam"], STR["ipcam"], STR["mp4"]])
 
-# Video source selection
 if video_mode == STR["webcam"]:
     video_src = 0
 elif video_mode == STR["ipcam"]:
@@ -251,7 +273,6 @@ else:
         video_src = None
 
 conn = init_db()
-
 running = st.empty()
 table = st.empty()
 download_div = st.empty()
@@ -259,6 +280,11 @@ stop_zone = st.empty()
 
 if "detection_running" not in st.session_state:
     st.session_state.detection_running = False
+
+# Debounce dictionary for IN/OUT events
+if "last_event_time" not in st.session_state:
+    st.session_state.last_event_time = {}
+debounce_seconds = 1  # Event will be accepted only every 15s for a plate (test with small value, >0 for practical)
 
 def start_detection():
     st.session_state.detection_running = True
@@ -276,68 +302,62 @@ else:
 if st.session_state.detection_running:
     st.info(STR["wait_cam"])
     cap = cv2.VideoCapture(video_src)
-
     try:
-        frame_counter = 0
         while cap.isOpened() and st.session_state.detection_running:
             ret, frame = cap.read()
-            if not ret:
-                st.warning(STR["err"])
+            if not ret:                
                 break
 
             frame_disp = frame.copy()
             plate = recognizer.detect_plate(frame)
+            now = datetime.now()
 
             if plate is not None:
-                now = datetime.now()
-                if not plate_has_open_entry(conn, plate):
-                    # No open entry → treat as IN
-                    insert_entry(conn, plate, now.strftime("%Y-%m-%d %H:%M:%S"))
-                    cv2.putText(
-                        frame_disp,
-                        f"ENTRY: {plate}",
-                        (10, 60),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        2,
-                        (0, 255, 0),
-                        3,
-                    )
-                    st.success(f"{STR['detection']}{plate} (IN)")
-                else:
-                    # Has open entry → treat as OUT
-                    # Get entry time from DB
-                    entry_df = pd.read_sql_query(
-                        "SELECT entry_time FROM parking WHERE plate=? AND (exit_time='' OR exit_time IS NULL) ORDER BY entry_time DESC LIMIT 1",
-                        conn,
-                        params=(plate,),
-                    )
-                    if entry_df.empty:
-                        # Fallback: treat as IN if no entry time found (unlikely)
+                last_time = st.session_state.last_event_time.get(plate)
+                if last_time is None or (now - last_time).total_seconds() > debounce_seconds:
+                    if not plate_has_open_entry(conn, plate):
                         insert_entry(conn, plate, now.strftime("%Y-%m-%d %H:%M:%S"))
-                        st.warning(f"Entry time missing for {plate}, recording new entry.")
-                    else:
-                        entry_time_str = entry_df.iloc[0]["entry_time"]
-                        entry_time = datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-                        exit_time = now
-                        duration_min = (exit_time - entry_time).total_seconds() / 60
-                        fee = round(duration_min / 60 * fee_per_hour, 2)
-                        update_exit(conn, plate, exit_time.strftime("%Y-%m-%d %H:%M:%S"), fee)
+                        st.session_state.last_event_time[plate] = now
                         cv2.putText(
                             frame_disp,
-                            f"OUT: {plate} {fee}",
-                            (10, 120),
+                            f"{STR['entry_label']}: {plate}",
+                            (10, 60),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             2,
-                            (0, 0, 255),
+                            (0, 255, 0),
                             3,
                         )
-                        st.success(f"{STR['left']}{fee}")
+                        st.success(f"{STR['detection']}{plate} {STR['in_label']}")
+                    else:
+                        entry_df = pd.read_sql_query(
+                            "SELECT entry_time FROM parking WHERE plate=? AND (exit_time='' OR exit_time IS NULL) ORDER BY entry_time DESC LIMIT 1",
+                            conn,
+                            params=(plate,),
+                        )
+                        if entry_df.empty:
+                            insert_entry(conn, plate, now.strftime("%Y-%m-%d %H:%M:%S"))
+                            st.success(f"{STR['detection']}{plate} (IN, no entry found!)")
+                        else:
+                            entry_time_str = entry_df.iloc[0]["entry_time"]
+                            entry_time = datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+                            exit_time = now
+                            duration_min = (exit_time - entry_time).total_seconds() / 60
+                            fee = round(duration_min / 60 * fee_per_hour, 2)
+                            update_exit(conn, plate, exit_time.strftime("%Y-%m-%d %H:%M:%S"), fee)
+                            st.session_state.last_event_time[plate] = now
+                            cv2.putText(
+                                frame_disp,
+                                f"OUT: {plate} {fee}",
+                                (10, 120),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                2,
+                                (0, 0, 255),
+                                3,
+                            )
+                            st.success(f"{STR['left']}{fee}")
 
             img = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
             running.image(img, channels="RGB", use_container_width=True)
-
-            # frame_counter += 1
-            # if frame_counter % 30 == 0:
             df = query_data(conn)
             table.dataframe(
                 df.rename(
@@ -350,17 +370,15 @@ if st.session_state.detection_running:
                 ),
                 use_container_width=True,
             )
+            time.sleep(2)
             if not st.session_state.detection_running:
                 break
-
     finally:
         cap.release()
         running.empty()
         stop_zone.empty()
         if video_mode == STR["mp4"] and "uploaded_file" in locals() and uploaded_file:
             tfile.close()
-
-    # Show download button **only once** after detection loop stops
     df = query_data(conn)
     download_div.download_button(
         label=STR["download"],
@@ -370,7 +388,7 @@ if st.session_state.detection_running:
         key="download_log_during_detection",
     )
 
-# Show full database table & download button outside detection controls
+# Show full parking table and download log button
 df = query_data(conn)
 st.subheader(STR["db_table"])
 st.dataframe(
