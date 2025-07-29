@@ -374,7 +374,7 @@ if st.session_state.detection_running:
                 ),
                 use_container_width=True,
             )
-            time.sleep(2)
+            time.sleep(1)
             if not st.session_state.detection_running:
                 break
     finally:
