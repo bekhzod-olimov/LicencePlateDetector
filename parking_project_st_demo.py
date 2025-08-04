@@ -11,6 +11,7 @@ import urllib
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers.modeling_utils")
 
+
 # Language dictionary for multilingual support
 LANGS = {
     "en": {
@@ -89,6 +90,7 @@ LANGS = {
         "foot": "AI Avtoturargoh Nazoratchisi | "
     }
 }
+
 
 # GroundingDINO import-related code
 from groundingdino.models import build_model
@@ -250,6 +252,7 @@ def load_model():
         checkpoint_path
     )
 
+
 recognizer = load_model()
 
 # Video upload interface (MP4 only)
@@ -264,24 +267,25 @@ else:
 
 conn = init_db()
 
+# Persistent video capture object stored in session_state
+if "cap" not in st.session_state:
+    st.session_state.cap = None
+
+def open_video(src):
+    cap = cv2.VideoCapture(src)
+    return cap
+
+def release_video():
+    if st.session_state.cap is not None:
+        st.session_state.cap.release()
+        st.session_state.cap = None
+
 # Initialize session state variables for controlling detection and frame index
 if "detection_running" not in st.session_state:
     st.session_state.detection_running = False
 
-if "frame_idx" not in st.session_state:
-    st.session_state.frame_idx = 0
-
 if "last_event_time" not in st.session_state:
     st.session_state.last_event_time = {}
-
-debounce_seconds = 1  # minimum seconds between events for the same plate
-
-def start_detection():
-    st.session_state.detection_running = True
-    st.session_state.frame_idx = 0  # reset frame index on start
-
-def stop_detection():
-    st.session_state.detection_running = False
 
 # Start/stop buttons
 if not st.session_state.detection_running:
@@ -289,25 +293,22 @@ if not st.session_state.detection_running:
         if video_src is None:
             st.warning("Please upload a video file before starting detection.")
         else:
-            start_detection()
+            # Open video and start detection
+            st.session_state.cap = open_video(video_src)
+            st.session_state.detection_running = True
 else:
     if st.button(STR["stop"]):
-        stop_detection()
+        st.session_state.detection_running = False
+        release_video()
 
-if st.session_state.detection_running and video_src is not None:
+if st.session_state.detection_running and st.session_state.cap is not None:
     st.info(STR["wait_cam"])
 
-    cap = cv2.VideoCapture(video_src)
-
-    # Move to current frame index
-    if st.session_state.frame_idx > 0:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.frame_idx)
-
-    ret, frame = cap.read()
+    ret, frame = st.session_state.cap.read()
     if not ret:
         st.success("Video processing completed.")
-        stop_detection()
-        cap.release()
+        release_video()
+        st.session_state.detection_running = False
     else:
         frame_disp = frame.copy()
         plate, box = recognizer.detect_plate_with_box(frame)
@@ -322,6 +323,7 @@ if st.session_state.detection_running and video_src is not None:
             y2 = int((cy + bh / 2) * H)
 
             last_time = st.session_state.last_event_time.get(plate)
+            debounce_seconds = 1  # minimum seconds between events for the same plate
             if last_time is None or (now - last_time).total_seconds() > debounce_seconds:
                 if not plate_has_open_entry(conn, plate):
                     # IN event
@@ -371,12 +373,10 @@ if st.session_state.detection_running and video_src is not None:
                         st.success(f"{STR['detection']}{plate} {STR['out_label']}... {STR['left']}{fee} {STR['currency']}.")
 
         img = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
-        running = st.empty()
-        running.image(img, channels="RGB", use_container_width=True)
+        st.image(img, channels="RGB", use_container_width=True)
 
         df = query_data(conn)
-        table = st.empty()
-        table.dataframe(
+        st.dataframe(
             df.rename(
                 columns={
                     "plate": STR["plate"],
@@ -387,14 +387,11 @@ if st.session_state.detection_running and video_src is not None:
             ),
             use_container_width=True,
         )
-
-        st.session_state.frame_idx += 1
-        cap.release()
 else:
     st.info("Please upload a video file and start detection.")
 
 # Download CSV of parking log
-conn = init_db()  # Re-initialize every rerun to keep connection fresh
+conn = init_db()  # Re-initialize fresh connection each rerun
 df = query_data(conn)
 st.subheader(STR["db_table"])
 st.dataframe(
