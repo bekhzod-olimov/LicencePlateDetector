@@ -1,6 +1,5 @@
 import streamlit as st
-import cv2
-import numpy as np
+import os, cv2
 from datetime import datetime
 import pytesseract
 import pandas as pd
