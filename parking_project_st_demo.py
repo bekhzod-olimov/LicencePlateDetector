@@ -224,76 +224,60 @@ lang_code = st.sidebar.selectbox(
     ["English", "Korean", "Uzbek"],
     format_func=lambda x: {"English": "English", "Korean": "한국어", "Uzbek": "Oʻzbek"}[x],
 ).lower()[:2]
-
 STR = LANGS[lang_code]
 st.title(STR["title"])
 fee_per_hour = st.sidebar.number_input(STR["fee_set"], min_value=0, value=2000 if lang_code == "uz" else 10)
 
-# Load or download model weights
 checkpoint_path = "groundingdino_swint_ogc.pth"
 import os
 if not os.path.isfile(checkpoint_path):
-    with st.spinner(
-        "Please wait we are downloading the pretrained weights..."
-        if lang_code == "en"
-        else ("잠시만 기다려 주세요. 사전 학습된 가중치를 다운로드 중입니다..." if lang_code == "ko" else "Iltimos, kuting. Model fayllari yuklab olinmoqda...")
-    ):
-        urllib.request.urlretrieve(
-            "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth",
-            checkpoint_path,
-        )
-    st.success("Pretrained weights have been downloaded!")
-
+    with st.spinner("Downloading pretrained weights..."):
+        urllib.request.urlretrieve("https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth", checkpoint_path)
+    st.success("Pretrained weights downloaded!")
 
 @st.cache_resource
 def load_model():
-    return GroundingDINOLicensePlateRecognizer(
-        "groundingdino/config/GroundingDINO_SwinT_OGC.py",
-        checkpoint_path
-    )
-
+    return GroundingDINOLicensePlateRecognizer("groundingdino/config/GroundingDINO_SwinT_OGC.py", checkpoint_path)
 
 recognizer = load_model()
 
-# Video upload interface (MP4 only)
 st.sidebar.markdown("### Video File Input (MP4 only)")
 uploaded_file = st.sidebar.file_uploader(STR["mp4"], type=["mp4"])
+
 if uploaded_file:
     tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
     tfile.write(uploaded_file.read())
     video_src = tfile.name
+    st.session_state.video_src = video_src
 else:
-    video_src = None
+    video_src = st.session_state.get('video_src', None)
 
 conn = init_db()
 
-# Persistent video capture object stored in session_state
+# Manage VideoCapture persistently in session
 if "cap" not in st.session_state:
     st.session_state.cap = None
 
 def open_video(src):
-    cap = cv2.VideoCapture(src)
-    return cap
+    return cv2.VideoCapture(src) if src else None
 
 def release_video():
     if st.session_state.cap is not None:
         st.session_state.cap.release()
         st.session_state.cap = None
 
-# Initialize session state variables for controlling detection and frame index
 if "detection_running" not in st.session_state:
     st.session_state.detection_running = False
 
 if "last_event_time" not in st.session_state:
     st.session_state.last_event_time = {}
 
-# Start/stop buttons
+# Start / Stop buttons
 if not st.session_state.detection_running:
     if st.button(STR["start"]):
-        if video_src is None:
-            st.warning("Please upload a video file before starting detection.")
+        if not video_src:
+            st.warning("Upload a video file to start detection.")
         else:
-            # Open video and start detection
             st.session_state.cap = open_video(video_src)
             st.session_state.detection_running = True
 else:
@@ -301,6 +285,7 @@ else:
         st.session_state.detection_running = False
         release_video()
 
+# Process one frame per rerun
 if st.session_state.detection_running and st.session_state.cap is not None:
     st.info(STR["wait_cam"])
 
@@ -313,7 +298,6 @@ if st.session_state.detection_running and st.session_state.cap is not None:
         frame_disp = frame.copy()
         plate, box = recognizer.detect_plate_with_box(frame)
         now = datetime.now()
-
         if plate is not None and box is not None:
             H, W, _ = frame_disp.shape
             cx, cy, bw, bh = box.tolist()
@@ -321,33 +305,23 @@ if st.session_state.detection_running and st.session_state.cap is not None:
             y1 = int((cy - bh / 2) * H)
             x2 = int((cx + bw / 2) * W)
             y2 = int((cy + bh / 2) * H)
-
+            
             last_time = st.session_state.last_event_time.get(plate)
-            debounce_seconds = 1  # minimum seconds between events for the same plate
+            debounce_seconds = 1
             if last_time is None or (now - last_time).total_seconds() > debounce_seconds:
                 if not plate_has_open_entry(conn, plate):
-                    # IN event
                     insert_entry(conn, plate, now.strftime("%Y-%m-%d %H:%M:%S"))
                     st.session_state.last_event_time[plate] = now
-
+                
                     cv2.rectangle(frame_disp, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(
-                        frame_disp,
-                        f"{STR['entry_label']}: {plate}",
-                        (x1, y1 - 10 if y1 > 20 else y2 + 30),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.8,
-                        (0, 255, 0),
-                        2,
-                    )
+                    cv2.putText(frame_disp, f"{STR['entry_label']}: {plate}",
+                                (x1, y1 - 10 if y1 > 20 else y2 + 30), cv2.FONT_HERSHEY_SIMPLEX,
+                                0.8, (0, 255, 0), 2)
                     st.success(f"{STR['detection']}{plate} {STR['in_label']}...")
                 else:
-                    # OUT event
                     entry_df = pd.read_sql_query(
                         "SELECT entry_time FROM parking WHERE plate=? AND (exit_time='' OR exit_time IS NULL) ORDER BY entry_time DESC LIMIT 1",
-                        conn,
-                        params=(plate,),
-                    )
+                        conn, params=(plate,))
                     if entry_df.empty:
                         insert_entry(conn, plate, now.strftime("%Y-%m-%d %H:%M:%S"))
                         st.success(f"{STR['detection']}{plate} {STR['in_label']}, no entry found!")
@@ -361,56 +335,40 @@ if st.session_state.detection_running and st.session_state.cap is not None:
                         st.session_state.last_event_time[plate] = now
 
                         cv2.rectangle(frame_disp, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                        cv2.putText(
-                            frame_disp,
-                            f"{STR['exit_label']}: {plate}",
-                            (x1, y1 - 10 if y1 > 20 else y2 + 30),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.8,
-                            (0, 0, 255),
-                            2,
-                        )
+                        cv2.putText(frame_disp, f"{STR['exit_label']}: {plate}",
+                                    (x1, y1 - 10 if y1 > 20 else y2 + 30),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                         st.success(f"{STR['detection']}{plate} {STR['out_label']}... {STR['left']}{fee} {STR['currency']}.")
 
         img = cv2.cvtColor(frame_disp, cv2.COLOR_BGR2RGB)
         st.image(img, channels="RGB", use_container_width=True)
 
         df = query_data(conn)
-        st.dataframe(
-            df.rename(
-                columns={
-                    "plate": STR["plate"],
-                    "entry_time": STR["entry"],
-                    "exit_time": STR["exit"],
-                    "fee": STR["paid"],
-                }
-            ),
-            use_container_width=True,
-        )
-else:
-    st.info("Please upload a video file and start detection.")
-
-# Download CSV of parking log
-conn = init_db()  # Re-initialize fresh connection each rerun
-df = query_data(conn)
-st.subheader(STR["db_table"])
-st.dataframe(
-    df.rename(
-        columns={
+        st.dataframe(df.rename(columns={
             "plate": STR["plate"],
             "entry_time": STR["entry"],
             "exit_time": STR["exit"],
             "fee": STR["paid"],
-        }
-    ),
-    use_container_width=True,
-)
-st.download_button(
-    label=STR["download"],
-    data=df.to_csv(index=False).encode("utf-8-sig"),
-    file_name="parking_log.csv",
-    mime="text/csv",
-    key="download_log_end",
-)
+        }), use_container_width=True)
+
+        # Short delay, then rerun to process next frame
+        import time
+        time.sleep(0.1)
+        st.rerun()
+else:
+    st.info("Please upload a video file and start detection.")
+
+# Display and download parking records
+conn = init_db()
+df = query_data(conn)
+st.subheader(STR["db_table"])
+st.dataframe(df.rename(columns={
+    "plate": STR["plate"],
+    "entry_time": STR["entry"],
+    "exit_time": STR["exit"],
+    "fee": STR["paid"],
+}), use_container_width=True)
+st.download_button(label=STR["download"], data=df.to_csv(index=False).encode("utf-8-sig"),
+                   file_name="parking_log.csv", mime="text/csv", key="download_log_end")
 st.markdown("---")
 st.caption(STR["foot"] + "https://github.com/bekhzod-olimov/LicencePlateDetector")
