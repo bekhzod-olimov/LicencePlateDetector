@@ -114,7 +114,8 @@ import groundingdino.datasets.transforms as T
 
 class GroundingDINOLicensePlateRecognizer:
     def __init__(self, config_path, checkpoint_path, device=None, box_thresh=0.15, text_thresh=0.15):
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = "cpu"
         # Load model config and weights
         args = SLConfig.fromfile(config_path)
         args.device = self.device
