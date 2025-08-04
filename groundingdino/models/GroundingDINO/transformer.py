@@ -238,9 +238,9 @@ class Transformer(nn.Module):
             lvl_pos_embed_flatten.append(lvl_pos_embed)
             src_flatten.append(src)
             mask_flatten.append(mask)
-        src_flatten = torch.cat(src_flatten, 1)  # bs, \sum{hxw}, c
-        mask_flatten = torch.cat(mask_flatten, 1)  # bs, \sum{hxw}
-        lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1)  # bs, \sum{hxw}, c
+        src_flatten = torch.cat(src_flatten, 1)  # bs, \\sum{hxw}, c
+        mask_flatten = torch.cat(mask_flatten, 1)  # bs, \\sum{hxw}
+        lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1)  # bs, \\sum{hxw}, c
         spatial_shapes = torch.as_tensor(
             spatial_shapes, dtype=torch.long, device=src_flatten.device
         )
@@ -270,9 +270,9 @@ class Transformer(nn.Module):
         )
         #########################################################
         # End Encoder
-        # - memory: bs, \sum{hw}, c
-        # - mask_flatten: bs, \sum{hw}
-        # - lvl_pos_embed_flatten: bs, \sum{hw}, c
+        # - memory: bs, \\sum{hw}, c
+        # - mask_flatten: bs, \\sum{hw}
+        # - lvl_pos_embed_flatten: bs, \\sum{hw}, c
         # - enc_intermediate_output: None or (nenc+1, bs, nq, c) or (nenc, bs, nq, c)
         # - enc_intermediate_refpoints: None or (nenc+1, bs, nq, c) or (nenc, bs, nq, c)
         #########################################################
@@ -295,7 +295,7 @@ class Transformer(nn.Module):
             topk_logits = enc_outputs_class_unselected.max(-1)[0]
             enc_outputs_coord_unselected = (
                 self.enc_out_bbox_embed(output_memory) + output_proposals
-            )  # (bs, \sum{hw}, 4) unsigmoid
+            )  # (bs, \\sum{hw}, 4) unsigmoid
             topk = self.num_queries
 
             topk_proposals = torch.topk(topk_logits, topk, dim=1)[1]  # bs, nq
@@ -470,6 +470,7 @@ class TransformerEncoder(nn.Module):
             ref_y, ref_x = torch.meshgrid(
                 torch.linspace(0.5, H_ - 0.5, H_, dtype=torch.float32, device=device),
                 torch.linspace(0.5, W_ - 0.5, W_, dtype=torch.float32, device=device),
+                indexing="ij"
             )
             ref_y = ref_y.reshape(-1)[None] / (valid_ratios[:, None, lvl, 1] * H_)
             ref_x = ref_x.reshape(-1)[None] / (valid_ratios[:, None, lvl, 0] * W_)
