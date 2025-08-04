@@ -1,5 +1,5 @@
 import streamlit as st
-import os, cv2
+import cv2
 from datetime import datetime
 import pytesseract
 import pandas as pd
@@ -229,6 +229,7 @@ fee_per_hour = st.sidebar.number_input(STR["fee_set"], min_value=0, value=2000 i
 
 # Load or download model weights
 checkpoint_path = "groundingdino_swint_ogc.pth"
+import os
 if not os.path.isfile(checkpoint_path):
     with st.spinner(
         "Please wait we are downloading the pretrained weights..."
@@ -248,7 +249,6 @@ def load_model():
         "groundingdino/config/GroundingDINO_SwinT_OGC.py",
         checkpoint_path
     )
-
 
 recognizer = load_model()
 
