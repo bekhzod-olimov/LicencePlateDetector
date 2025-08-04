@@ -203,14 +203,6 @@ import os, urllib
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning, module="transformers.modeling_utils")
 
-checkpoint_path = "groundingdino_swint_ogc.pth"
-
-# Instantiate once
-recognizer = GroundingDINOLicensePlateRecognizer(
-    config_path="groundingdino/config/GroundingDINO_SwinT_OGC.py",
-    checkpoint_path=checkpoint_path
-)
-
 def init_db():
     conn = sqlite3.connect("parking.sqlite")
     conn.execute('''CREATE TABLE IF NOT EXISTS parking
@@ -259,6 +251,8 @@ lang_code = st.sidebar.selectbox(
     format_func=lambda x: {"English": "English", "Korean": "한국어", "Uzbek": "Oʻzbek"}[x],
 ).lower()[:2]
 
+checkpoint_path = "groundingdino_swint_ogc.pth"
+
 if not os.path.isfile(checkpoint_path):    
     with st.spinner("Please wait we are downloading the pretrained weights..." if lang_code=="English" else (
         "잠시만 기다려 주세요. 사전 학습된 가중치를 다운로드 중입니다..." if lang_code=="Korean"
@@ -268,6 +262,12 @@ if not os.path.isfile(checkpoint_path):
             "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth", f"{checkpoint_path}"
         )
     st.success("Pretrained weights have been downloaded!")
+
+# Instantiate once
+recognizer = GroundingDINOLicensePlateRecognizer(
+    config_path="groundingdino/config/GroundingDINO_SwinT_OGC.py",
+    checkpoint_path=checkpoint_path
+)
 
 STR = LANGS[lang_code]
 st.title(STR["title"])
